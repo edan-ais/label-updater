@@ -1,48 +1,20 @@
 # ==============================
-# Install + Import Dependencies
+# update_labels.py
 # ==============================
 import os
 import io
 import datetime
 import tempfile
 import fitz  # PyMuPDF
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from google.auth import default
 
 # ==============================
-# Authenticate to Google Drive
+# Authenticate to Google Drive (service account)
 # ==============================
-SCOPES = ['https://www.googleapis.com/auth/drive']
-
-creds = Credentials(
-    token=None,
-    refresh_token=os.environ['GOOGLE_REFRESH_TOKEN'],
-    client_id=os.environ['GOOGLE_CLIENT_ID'],
-    client_secret=os.environ['GOOGLE_CLIENT_SECRET'],
-    token_uri='https://oauth2.googleapis.com/token',
-    scopes=SCOPES
-)
-
+# Cloud Run will automatically use the service account attached
+creds, _ = default(scopes=['https://www.googleapis.com/auth/drive'])
 drive_service = build('drive', 'v3', credentials=creds)
-
-# ==============================
-# Product Configuration
-# ==============================
-PRODUCTS = [
-    {
-        "name": "Rice Crispy Treats",
-        "shelf_days": 75,
-        "updating_folder": "1DmxmpYMpIyeXOsRUH9mfBp9oEMT43clC",
-        "archive_folder": "1Ob6gnf2GazvTxSjqMquxUl1zepmmmzOF"
-    },
-    {
-        "name": "Fudge",
-        "shelf_days": 60,
-        "updating_folder": "1i3h8vBr-_HIylY3JfrChesos_u-csRvW",
-        "archive_folder": "1Yra6mlKoY2Cvn5ReN0VK807fHn-Q-9-0"
-    }
-]
 
 # ==============================
 # Google Drive Helpers
@@ -73,17 +45,17 @@ def download_file_to_path(file_id, local_path):
     fh.close()
 
 def upload_file_replace(file_id, local_path, mimetype="application/pdf"):
+    from googleapiclient.http import MediaFileUpload
     media = MediaFileUpload(local_path, mimetype=mimetype, resumable=True)
-    updated_file = drive_service.files().update(
+    return drive_service.files().update(
         fileId=file_id,
         media_body=media
     ).execute()
-    return updated_file
 
 def find_file_in_folder_by_name(folder_id, name):
     safe_name = name.replace('"', '\\"')
     query = f"'{folder_id}' in parents and name = \"{safe_name}\" and trashed=false"
-    res = drive_service.files().list(q=query, fields='files(id, name)', spaces='drive').execute()
+    res = drive_service.files().list(q=query, fields='files(id, name)').execute()
     files = res.get('files', [])
     return files[0] if files else None
 
@@ -101,10 +73,8 @@ def copy_file_to_folder(file_id, new_folder_id, new_name=None):
 # ==============================
 # Date Utilities
 # ==============================
-def compute_best_by_date(shelf_days):
-    """Compute best-by date: shelf_days ahead, rounded to nearest 1st or 15th.
-    If equal distance, choose whichever is sooner."""
-    target = datetime.date.today() + datetime.timedelta(days=shelf_days)
+def compute_best_by_date(days_ahead):
+    target = datetime.date.today() + datetime.timedelta(days=days_ahead)
     first = target.replace(day=1)
     fifteenth = target.replace(day=15)
 
@@ -125,7 +95,7 @@ def compute_best_by_date(shelf_days):
 # ==============================
 def replace_best_by_text(doc, new_date):
     replaced = False
-    phrases_to_match = ["Best if used by:", "Best if Used By:"]  # support capitalization
+    phrases_to_match = ["Best if used by:", "Best if Used By:"]
 
     for page_num, page in enumerate(doc, start=1):
         blocks = page.get_text("dict")["blocks"]
@@ -142,8 +112,12 @@ def replace_best_by_text(doc, new_date):
                         # White out old text
                         page.draw_rect(bbox, color=(1,1,1), fill=(1,1,1))
 
-                        # Insert new text
-                        x, y = (bbox.x0, bbox.y1) if rotation == 0 else (bbox.x1, bbox.y1)
+                        # Choose text insertion point based on rotation
+                        if rotation == 0:
+                            x, y = bbox.x0, bbox.y1
+                        else:
+                            x, y = bbox.x1, bbox.y1
+
                         page.insert_text(
                             (x, y),
                             new_text,
@@ -157,15 +131,13 @@ def replace_best_by_text(doc, new_date):
     return replaced
 
 # ==============================
-# Main Processing
+# Main Processing Function
 # ==============================
-def process_labels_for_product(product):
-    """Process all PDFs for a single product"""
-    print(f"\n=== Processing {product['name']} ===")
-    files = list_files_in_folder(product["updating_folder"])
+def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best_by):
+    files = list_files_in_folder(UPDATING_LABELS_FOLDER_ID)
     pdf_files = [f for f in files if f.get('mimeType') == 'application/pdf' or f['name'].strip().lower().endswith('.pdf')]
 
-    target_date = compute_best_by_date(product["shelf_days"])
+    target_date = compute_best_by_date(days_until_best_by)
     print(f"Target best-by date: {target_date}\n")
 
     summary = []
@@ -180,7 +152,7 @@ def process_labels_for_product(product):
             download_file_to_path(file_id, local_path)
             print(" - downloaded original")
 
-            copy_file_to_folder(file_id, product["archive_folder"], name)
+            copy_file_to_folder(file_id, ARCHIVE_FOLDER_ID, name)
             print(f" - archived original as {name}")
 
             doc = fitz.open(local_path)
@@ -199,17 +171,33 @@ def process_labels_for_product(product):
                 print(" - ⚠️ no matches found to replace\n")
                 summary.append((name, "no-replace", None))
 
-    print(f"\n=== {product['name']} Run summary ===")
+    print("\n=== Run summary ===")
     for item in summary:
         print(item)
 
-
-def process_all_products():
-    for product in PRODUCTS:
-        process_labels_for_product(product)
+# ==============================
+# Folders Configuration
+# ==============================
+LABEL_CONFIGS = [
+    {
+        "updating_folder": "1DmxmpYMpIyeXOsRUH9mfBp9oEMT43clC",  # Rice Crispy
+        "archive_folder": "1Ob6gnf2GazvTxSjqMquxUl1zepmmmzOF",
+        "days_until_best_by": 75,
+    },
+    {
+        "updating_folder": "1i3h8vBr-_HIylY3JfrChesos_u-csRvW",  # Fudge
+        "archive_folder": "1Yra6mlKoY2Cvn5ReN0VK807fHn-Q-9-0",
+        "days_until_best_by": 60,
+    },
+]
 
 # ==============================
-# Run once
+# Run Processing
 # ==============================
 if __name__ == "__main__":
-    process_all_products()
+    for config in LABEL_CONFIGS:
+        process_labels(
+            UPDATING_LABELS_FOLDER_ID=config["updating_folder"],
+            ARCHIVE_FOLDER_ID=config["archive_folder"],
+            days_until_best_by=config["days_until_best_by"]
+        )
