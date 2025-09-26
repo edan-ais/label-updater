@@ -1,15 +1,24 @@
-# Use official Python slim image
+# ==============================
+# Dockerfile for label-updater
+# ==============================
+
+# Use official Python base image
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install
-COPY requirements.txt .
-RUN python -m pip install --upgrade pip && pip install -r requirements.txt
+# Copy all files from repo into container
+COPY . /app
 
-# Copy all code
-COPY . .
+# Install required Python packages
+RUN pip install --no-cache-dir --upgrade \
+    google-api-python-client \
+    google-auth \
+    google-auth-httplib2 \
+    google-auth-oauthlib \
+    PyMuPDF \
+    python-dotenv
 
-# Run script when container starts
+# Run the label updater script
 CMD ["python", "update_labels.py"]
