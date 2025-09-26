@@ -1,5 +1,5 @@
 # ==============================
-# Dockerfile for label-updater
+# Dockerfile for label-updater (Cloud Run Job)
 # ==============================
 
 # Use official Python 3.11 slim base image
@@ -21,8 +21,5 @@ RUN pip install --no-cache-dir --upgrade pip \
        PyMuPDF==1.26.4 \
        python-dotenv==1.1.1
 
-# Expose default Cloud Run port
-ENV PORT=8080
-
-# Run the label updater script by default (Cloud Run Job)
+# Run the label updater script when the job executes
 CMD ["python", "update_labels.py"]
