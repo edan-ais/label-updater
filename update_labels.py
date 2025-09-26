@@ -8,11 +8,12 @@ import tempfile
 import fitz  # PyMuPDF
 from googleapiclient.discovery import build
 from google.auth import default
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
 # ==============================
 # Authenticate to Google Drive (service account)
 # ==============================
-# Cloud Run will automatically use the service account attached
+# Cloud Run will automatically use the service account attached to the service.
 creds, _ = default(scopes=['https://www.googleapis.com/auth/drive'])
 drive_service = build('drive', 'v3', credentials=creds)
 
@@ -41,11 +42,10 @@ def download_file_to_path(file_id, local_path):
     downloader = MediaIoBaseDownload(fh, request)
     done = False
     while not done:
-        status, done = downloader.next_chunk()
+        _, done = downloader.next_chunk()
     fh.close()
 
 def upload_file_replace(file_id, local_path, mimetype="application/pdf"):
-    from googleapiclient.http import MediaFileUpload
     media = MediaFileUpload(local_path, mimetype=mimetype, resumable=True)
     return drive_service.files().update(
         fileId=file_id,
@@ -110,7 +110,7 @@ def replace_best_by_text(doc, new_date):
                         rotation = 90 if bbox.height > bbox.width else 0
 
                         # White out old text
-                        page.draw_rect(bbox, color=(1,1,1), fill=(1,1,1))
+                        page.draw_rect(bbox, color=(1, 1, 1), fill=(1, 1, 1))
 
                         # Choose text insertion point based on rotation
                         if rotation == 0:
@@ -123,7 +123,7 @@ def replace_best_by_text(doc, new_date):
                             new_text,
                             fontname="helv",
                             fontsize=s["size"],
-                            color=(0,0,0),
+                            color=(0, 0, 0),
                             rotate=rotation
                         )
                         print(f"Replaced on page {page_num}: '{old_text}' → '{new_text}' (rotation={rotation})")
@@ -135,7 +135,10 @@ def replace_best_by_text(doc, new_date):
 # ==============================
 def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best_by):
     files = list_files_in_folder(UPDATING_LABELS_FOLDER_ID)
-    pdf_files = [f for f in files if f.get('mimeType') == 'application/pdf' or f['name'].strip().lower().endswith('.pdf')]
+    pdf_files = [
+        f for f in files
+        if f.get('mimeType') == 'application/pdf' or f['name'].strip().lower().endswith('.pdf')
+    ]
 
     target_date = compute_best_by_date(days_until_best_by)
     print(f"Target best-by date: {target_date}\n")
@@ -191,13 +194,14 @@ LABEL_CONFIGS = [
     },
 ]
 
-# ==============================
-# Run Processing
-# ==============================
-if __name__ == "__main__":
+def main():
+    """Runs the label updater for all configured folders."""
     for config in LABEL_CONFIGS:
         process_labels(
             UPDATING_LABELS_FOLDER_ID=config["updating_folder"],
             ARCHIVE_FOLDER_ID=config["archive_folder"],
             days_until_best_by=config["days_until_best_by"]
         )
+
+if __name__ == "__main__":
+    main()
