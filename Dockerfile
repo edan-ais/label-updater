@@ -1,5 +1,5 @@
 # ==============================
-# Dockerfile for label-updater
+# Dockerfile for label-updater (Cloud Run Compatible)
 # ==============================
 
 # Use official Python base image
@@ -8,17 +8,17 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Copy all files from repo into container
-COPY . /app
+# Copy requirements first (for better caching)
+COPY requirements.txt /app/requirements.txt
 
 # Install required Python packages
-RUN pip install --no-cache-dir --upgrade \
-    google-api-python-client \
-    google-auth \
-    google-auth-httplib2 \
-    google-auth-oauthlib \
-    PyMuPDF \
-    python-dotenv
+RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
 
-# Run the label updater script
-CMD ["python", "update_labels.py"]
+# Copy the rest of the application code
+COPY . /app
+
+# Expose port 8080 for Cloud Run
+EXPOSE 8080
+
+# Start the Flask web server
+CMD ["python", "main.py"]
