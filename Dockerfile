@@ -9,7 +9,7 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libmupdf-dev \
         gcc \
-    && rm -rf /var/lib/apt/lists/*
+        && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -21,15 +21,17 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the app
+# Copy the rest of the application code
 COPY . /app
 
-# Copy OAuth credentials (make sure you have these in the project folder)
+# Copy OAuth credentials (make sure credentials.json is in your repo)
 COPY credentials.json /app/credentials.json
-# token.pickle will be created on first run if it doesn't exist
 
-# Make token.pickle writable
+# Create token.pickle for OAuth caching and make it writable
 RUN touch /app/token.pickle && chmod 666 /app/token.pickle
+
+# Set environment variable for OAuth credentials
+ENV GOOGLE_APPLICATION_CREDENTIALS="/app/credentials.json"
 
 # Command to run the job
 CMD ["python", "update_labels.py"]
