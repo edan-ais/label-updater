@@ -5,21 +5,24 @@
 # Use official Python 3.11 slim base image
 FROM python:3.11-slim
 
+# Install system deps (PyMuPDF relies on MuPDF libs)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libmupdf-dev \
+        gcc \
+        && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 
-# Copy all files from repo into container
+# Copy only requirements first (to leverage Docker caching)
+COPY requirements.txt /app/
+
+# Upgrade pip and install dependencies
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the code
 COPY . /app
 
-# Upgrade pip and install required Python packages with fixed versions
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir --upgrade \
-       google-api-python-client==2.183.0 \
-       google-auth==2.40.3 \
-       google-auth-httplib2==0.2.0 \
-       google-auth-oauthlib==1.2.2 \
-       PyMuPDF==1.26.4 \
-       python-dotenv==1.1.1
-
-# Run the label updater script when the job executes
+# Default command: run the script once and exit
 CMD ["python", "update_labels.py"]
