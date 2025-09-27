@@ -1,5 +1,5 @@
 # ==============================
-# Dockerfile for label-updater (Cloud Run Job)
+# Dockerfile for label-updater (Cloud Run Job with OAuth)
 # ==============================
 
 # Base image
@@ -23,6 +23,13 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Copy the rest of the app
 COPY . /app
+
+# Copy OAuth credentials (make sure you have these in the project folder)
+COPY credentials.json /app/credentials.json
+# token.pickle will be created on first run if it doesn't exist
+
+# Make token.pickle writable
+RUN touch /app/token.pickle && chmod 666 /app/token.pickle
 
 # Command to run the job
 CMD ["python", "update_labels.py"]
