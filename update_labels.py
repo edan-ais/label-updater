@@ -1,3 +1,4 @@
+```python
 # ==============================
 # update_labels.py
 # ==============================
@@ -13,7 +14,6 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 # ==============================
 # Authenticate to Google Drive (service account)
 # ==============================
-# Cloud Run will automatically use the service account attached to the service.
 creds, _ = default(scopes=['https://www.googleapis.com/auth/drive'])
 drive_service = build('drive', 'v3', credentials=creds)
 
@@ -183,19 +183,23 @@ def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best
 # ==============================
 LABEL_CONFIGS = [
     {
-        "updating_folder": "1DmxmpYMpIyeXOsRUH9mfBp9oEMT43clC",  # Rice Crispy
-        "archive_folder": "1Ob6gnf2GazvTxSjqMquxUl1zepmmmzOF",
+        "updating_folder": "17MjwKWaRdqxdu8mQ77ygTorw9nH2WpPu",  # Rice Crispy
+        "archive_folder": "1Vj_zSVW8jizFvj9tAr5hJ45L_yXkI6To",
         "days_until_best_by": 75,
     },
     {
-        "updating_folder": "1i3h8vBr-_HIylY3JfrChesos_u-csRvW",  # Fudge
-        "archive_folder": "1Yra6mlKoY2Cvn5ReN0VK807fHn-Q-9-0",
+        "updating_folder": "14SHHIMLCYh_ylqQ2LqoUdftXgFeJP2O-",  # Fudge
+        "archive_folder": "1qIxjklSgyruOUybWnCsr8tcCkKNe26iJ",
+        "days_until_best_by": 60,
+    },
+    {
+        "updating_folder": "1hpIcA2LwXd8ogizoNERVvrGfTkweLopV",  # Wine Fudge
+        "archive_folder": "1i-CieIFDrlTwl9sggrT4tWt-X2mEgLwj",
         "days_until_best_by": 60,
     },
 ]
 
 def main():
-    """Runs the label updater for all configured folders."""
     for config in LABEL_CONFIGS:
         process_labels(
             UPDATING_LABELS_FOLDER_ID=config["updating_folder"],
@@ -205,3 +209,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
