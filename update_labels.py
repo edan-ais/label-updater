@@ -1,6 +1,5 @@
-```python
 # ==============================
-# update_labels.py
+# update_labels.py (Shared Drive compatible)
 # ==============================
 import os
 import io
@@ -28,7 +27,9 @@ def list_files_in_folder(folder_id):
         results = drive_service.files().list(
             q=query,
             fields="nextPageToken, files(id, name, mimeType)",
-            pageToken=page_token
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
         ).execute()
         files.extend(results.get("files", []))
         page_token = results.get("nextPageToken")
@@ -37,7 +38,7 @@ def list_files_in_folder(folder_id):
     return files
 
 def download_file_to_path(file_id, local_path):
-    request = drive_service.files().get_media(fileId=file_id)
+    request = drive_service.files().get_media(fileId=file_id, supportsAllDrives=True)
     fh = io.FileIO(local_path, "wb")
     downloader = MediaIoBaseDownload(fh, request)
     done = False
@@ -49,26 +50,40 @@ def upload_file_replace(file_id, local_path, mimetype="application/pdf"):
     media = MediaFileUpload(local_path, mimetype=mimetype, resumable=True)
     return drive_service.files().update(
         fileId=file_id,
-        media_body=media
+        media_body=media,
+        supportsAllDrives=True
     ).execute()
 
 def find_file_in_folder_by_name(folder_id, name):
     safe_name = name.replace('"', '\\"')
     query = f"'{folder_id}' in parents and name = \"{safe_name}\" and trashed=false"
-    res = drive_service.files().list(q=query, fields='files(id, name)').execute()
+    res = drive_service.files().list(
+        q=query,
+        fields='files(id, name)',
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
     files = res.get('files', [])
     return files[0] if files else None
 
 def copy_file_to_folder(file_id, new_folder_id, new_name=None):
-    file = drive_service.files().get(fileId=file_id, fields='name').execute()
+    file = drive_service.files().get(
+        fileId=file_id,
+        fields='name',
+        supportsAllDrives=True
+    ).execute()
     name = new_name if new_name else file['name']
 
     existing = find_file_in_folder_by_name(new_folder_id, name)
     if existing:
-        drive_service.files().delete(fileId=existing['id']).execute()
+        drive_service.files().delete(fileId=existing['id'], supportsAllDrives=True).execute()
 
     copied_file = {'name': name, 'parents': [new_folder_id]}
-    return drive_service.files().copy(fileId=file_id, body=copied_file).execute()
+    return drive_service.files().copy(
+        fileId=file_id,
+        body=copied_file,
+        supportsAllDrives=True
+    ).execute()
 
 # ==============================
 # Date Utilities
@@ -109,10 +124,7 @@ def replace_best_by_text(doc, new_date):
                         bbox = fitz.Rect(s["bbox"])
                         rotation = 90 if bbox.height > bbox.width else 0
 
-                        # White out old text
                         page.draw_rect(bbox, color=(1, 1, 1), fill=(1, 1, 1))
-
-                        # Choose text insertion point based on rotation
                         if rotation == 0:
                             x, y = bbox.x0, bbox.y1
                         else:
@@ -183,17 +195,17 @@ def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best
 # ==============================
 LABEL_CONFIGS = [
     {
-        "updating_folder": "17MjwKWaRdqxdu8mQ77ygTorw9nH2WpPu",  # Rice Crispy
+        "updating_folder": "17MjwKWaRdqxdu8mQ77ygTorw9nH2WpPu",
         "archive_folder": "1Vj_zSVW8jizFvj9tAr5hJ45L_yXkI6To",
         "days_until_best_by": 75,
     },
     {
-        "updating_folder": "14SHHIMLCYh_ylqQ2LqoUdftXgFeJP2O-",  # Fudge
+        "updating_folder": "14SHHIMLCYh_ylqQ2LqoUdftXgFeJP2O-",
         "archive_folder": "1qIxjklSgyruOUybWnCsr8tcCkKNe26iJ",
         "days_until_best_by": 60,
     },
     {
-        "updating_folder": "1hpIcA2LwXd8ogizoNERVvrGfTkweLopV",  # Wine Fudge
+        "updating_folder": "1hpIcA2LwXd8ogizoNERVvrGfTkweLopV",
         "archive_folder": "1i-CieIFDrlTwl9sggrT4tWt-X2mEgLwj",
         "days_until_best_by": 60,
     },
@@ -209,4 +221,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
