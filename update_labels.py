@@ -1,19 +1,41 @@
 # ==============================
-# update_labels.py (Shared Drive compatible)
+# update_labels.py (Shared Drive + OAuth)
 # ==============================
 import os
 import io
 import datetime
 import tempfile
+import pickle
 import fitz  # PyMuPDF
 from googleapiclient.discovery import build
-from google.auth import default
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 
 # ==============================
-# Authenticate to Google Drive (service account)
+# OAuth Authentication (Workspace user)
 # ==============================
-creds, _ = default(scopes=['https://www.googleapis.com/auth/drive'])
+SCOPES = ['https://www.googleapis.com/auth/drive']
+CREDENTIALS_FILE = 'credentials.json'
+TOKEN_FILE = 'token.pickle'
+
+creds = None
+
+# Load saved token if available
+if os.path.exists(TOKEN_FILE):
+    with open(TOKEN_FILE, 'rb') as token:
+        creds = pickle.load(token)
+
+# If no valid credentials, run OAuth flow locally to generate token
+if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
+        creds = flow.run_console()  # Run locally first to generate token.pickle
+    with open(TOKEN_FILE, 'wb') as token:
+        pickle.dump(creds, token)
+
 drive_service = build('drive', 'v3', credentials=creds)
 
 # ==============================
@@ -39,12 +61,11 @@ def list_files_in_folder(folder_id):
 
 def download_file_to_path(file_id, local_path):
     request = drive_service.files().get_media(fileId=file_id, supportsAllDrives=True)
-    fh = io.FileIO(local_path, "wb")
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    fh.close()
+    with io.FileIO(local_path, "wb") as fh:
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
 
 def upload_file_replace(file_id, local_path, mimetype="application/pdf"):
     media = MediaFileUpload(local_path, mimetype=mimetype, resumable=True)
@@ -56,9 +77,8 @@ def upload_file_replace(file_id, local_path, mimetype="application/pdf"):
 
 def find_file_in_folder_by_name(folder_id, name):
     safe_name = name.replace('"', '\\"')
-    query = f"'{folder_id}' in parents and name = \"{safe_name}\" and trashed=false"
     res = drive_service.files().list(
-        q=query,
+        q=f"'{folder_id}' in parents and name=\"{safe_name}\" and trashed=false",
         fields='files(id, name)',
         supportsAllDrives=True,
         includeItemsFromAllDrives=True
@@ -67,11 +87,7 @@ def find_file_in_folder_by_name(folder_id, name):
     return files[0] if files else None
 
 def copy_file_to_folder(file_id, new_folder_id, new_name=None):
-    file = drive_service.files().get(
-        fileId=file_id,
-        fields='name',
-        supportsAllDrives=True
-    ).execute()
+    file = drive_service.files().get(fileId=file_id, fields='name', supportsAllDrives=True).execute()
     name = new_name if new_name else file['name']
 
     existing = find_file_in_folder_by_name(new_folder_id, name)
@@ -79,11 +95,7 @@ def copy_file_to_folder(file_id, new_folder_id, new_name=None):
         drive_service.files().delete(fileId=existing['id'], supportsAllDrives=True).execute()
 
     copied_file = {'name': name, 'parents': [new_folder_id]}
-    return drive_service.files().copy(
-        fileId=file_id,
-        body=copied_file,
-        supportsAllDrives=True
-    ).execute()
+    return drive_service.files().copy(fileId=file_id, body=copied_file, supportsAllDrives=True).execute()
 
 # ==============================
 # Date Utilities
@@ -125,10 +137,7 @@ def replace_best_by_text(doc, new_date):
                         rotation = 90 if bbox.height > bbox.width else 0
 
                         page.draw_rect(bbox, color=(1, 1, 1), fill=(1, 1, 1))
-                        if rotation == 0:
-                            x, y = bbox.x0, bbox.y1
-                        else:
-                            x, y = bbox.x1, bbox.y1
+                        x, y = (bbox.x1, bbox.y1) if rotation == 90 else (bbox.x0, bbox.y1)
 
                         page.insert_text(
                             (x, y),
@@ -147,10 +156,7 @@ def replace_best_by_text(doc, new_date):
 # ==============================
 def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best_by):
     files = list_files_in_folder(UPDATING_LABELS_FOLDER_ID)
-    pdf_files = [
-        f for f in files
-        if f.get('mimeType') == 'application/pdf' or f['name'].strip().lower().endswith('.pdf')
-    ]
+    pdf_files = [f for f in files if f.get('mimeType') == 'application/pdf' or f['name'].lower().endswith('.pdf')]
 
     target_date = compute_best_by_date(days_until_best_by)
     print(f"Target best-by date: {target_date}\n")
