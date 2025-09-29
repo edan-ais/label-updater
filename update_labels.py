@@ -112,15 +112,16 @@ def compute_best_by_date(days_ahead):
     first = target.replace(day=1)
     fifteenth = target.replace(day=15)
 
-    dist_first = abs((target - first).days)
-    dist_fifteenth = abs((target - fifteenth).days)
+    # Only consider dates on/after target
+    valid_dates = [d for d in [first, fifteenth] if d >= target]
 
-    if dist_first < dist_fifteenth:
-        rounded = first
-    elif dist_fifteenth < dist_first:
-        rounded = fifteenth
+    if not valid_dates:
+        # fallback → next month 15th
+        next_month = (target.replace(day=1) + datetime.timedelta(days=32)).replace(day=15)
+        rounded = next_month
     else:
-        rounded = first if first < fifteenth else fifteenth
+        # pick the later valid date
+        rounded = max(valid_dates)
 
     return rounded.strftime("%m/%d/%Y")
 
@@ -143,17 +144,17 @@ def replace_best_by_text(doc, new_date):
                         bbox = fitz.Rect(s["bbox"])
                         rotation = 90 if bbox.height > bbox.width else 0
 
-                        page.draw_rect(bbox, color=(1, 1, 1), fill=(1, 1, 1))
-                        x, y = (bbox.x1, bbox.y1) if rotation == 90 else (bbox.x0, bbox.y1)
-
-                        page.insert_text(
-                            (x, y),
+                        # Overlay new text centered in same bbox
+                        page.insert_textbox(
+                            bbox,
                             new_text,
                             fontname="helv",
                             fontsize=s["size"],
                             color=(0, 0, 0),
+                            align=1,   # center
                             rotate=rotation
                         )
+
                         print(f"Replaced on page {page_num}: '{old_text}' → '{new_text}' (rotation={rotation})")
                         replaced = True
     return replaced
@@ -180,6 +181,7 @@ def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best
             download_file_to_path(file_id, local_path)
             print(" - downloaded original")
 
+            # Archive before editing
             copy_file_to_folder(file_id, ARCHIVE_FOLDER_ID, name)
             print(f" - archived original as {name}")
 
@@ -203,31 +205,38 @@ def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best
     for item in summary:
         print(item)
 
+    return summary
+
 # ==============================
 # Folders Configuration
 # ==============================
 LABEL_CONFIGS = [
     {
-        "updating_folder": "17MjwKWaRdqxdu8mQ77ygTorw9nH2WpPu",
-        "archive_folder": "1Vj_zSVW8jizFvj9tAr5hJ45L_yXkI6To",
-        "days_until_best_by": 75,
-    },
-    {
-        "updating_folder": "14SHHIMLCYh_ylqQ2LqoUdftXgFeJP2O-",
+        "updating_folder": "14SHHIMLCYh_ylqQ2LqoUdftXgFeJP2O-",  # fudge
         "archive_folder": "1qIxjklSgyruOUybWnCsr8tcCkKNe26iJ",
         "days_until_best_by": 60,
     },
     {
-        "updating_folder": "1hpIcA2LwXd8ogizoNERVvrGfTkweLopV",
+        "updating_folder": "1hpIcA2LwXd8ogizoNERVvrGfTkweLopV",  # wine fudge
         "archive_folder": "1i-CieIFDrlTwl9sggrT4tWt-X2mEgLwj",
         "days_until_best_by": 60,
+    },
+    {
+        "updating_folder": "17MjwKWaRdqxdu8mQ77ygTorw9nH2WpPu",  # rice crispys
+        "archive_folder": "1Vj_zSVW8jizFvj9tAr5hJ45L_yXkI6To",
+        "days_until_best_by": 75,
     },
 ]
 
 def main():
+    all_summaries = []
     for config in LABEL_CONFIGS:
-        process_labels(
+        result = process_labels(
             UPDATING_LABELS_FOLDER_ID=config["updating_folder"],
             ARCHIVE_FOLDER_ID=config["archive_folder"],
             days_until_best_by=config["days_until_best_by"]
         )
+        all_summaries.extend(result)
+
+    print("=== All folders processed. Exiting updater. ===")
+    return all_summaries
