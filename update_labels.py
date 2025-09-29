@@ -167,7 +167,7 @@ def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best
     pdf_files = [f for f in files if f.get('mimeType') == 'application/pdf' or f['name'].lower().endswith('.pdf')]
 
     target_date = compute_best_by_date(days_until_best_by)
-    print(f"Target best-by date: {target_date}\n")
+    print(f"\n--- Processing folder {UPDATING_LABELS_FOLDER_ID} (target date {target_date}) ---\n")
 
     summary = []
 
@@ -200,10 +200,6 @@ def process_labels(UPDATING_LABELS_FOLDER_ID, ARCHIVE_FOLDER_ID, days_until_best
                 doc.close()
                 print(" - ⚠️ no matches found to replace\n")
                 summary.append((name, "no-replace", None))
-
-    print("\n=== Run summary ===")
-    for item in summary:
-        print(item)
 
     return summary
 
@@ -238,5 +234,13 @@ def main():
         )
         all_summaries.extend(result)
 
-    print("=== All folders processed. Exiting updater. ===")
+    # Final combined summary
+    print("\n=== Combined Run Summary ===")
+    for name, status, date in all_summaries:
+        if status == "updated":
+            print(f"{name}: updated → {date}")
+        else:
+            print(f"{name}: no matches found")
+
+    print("=== All folders processed. Exiting updater. ===\n")
     return all_summaries
