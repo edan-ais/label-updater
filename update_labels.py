@@ -129,7 +129,9 @@ def compute_best_by_date(days_ahead):
 # PDF Text Replacement
 # ==============================
 def replace_best_by_text(doc, new_date):
-    replaced = False
+    """
+    Replace only the first occurrence of 'Best if Used By:' in a document.
+    """
     phrases_to_match = ["Best if used by:", "Best if Used By:"]
 
     for page_num, page in enumerate(doc, start=1):
@@ -156,8 +158,8 @@ def replace_best_by_text(doc, new_date):
                         )
 
                         print(f"Replaced on page {page_num}: '{old_text}' → '{new_text}' (rotation={rotation})")
-                        replaced = True
-    return replaced
+                        return True   # ✅ stop after first replacement
+    return False
 
 # ==============================
 # Main Processing Function
