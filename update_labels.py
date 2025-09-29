@@ -32,7 +32,7 @@ if not creds or not creds.valid:
         creds.refresh(Request())
     else:
         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_console()  # Run locally first to generate token.pickle
+        creds = flow.run_console()  # Run once locally to generate token.pickle
     with open(TOKEN_FILE, 'wb') as token:
         pickle.dump(creds, token)
 
@@ -224,6 +224,3 @@ def main():
             ARCHIVE_FOLDER_ID=config["archive_folder"],
             days_until_best_by=config["days_until_best_by"]
         )
-
-if __name__ == "__main__":
-    main()
