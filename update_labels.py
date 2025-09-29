@@ -21,18 +21,19 @@ TOKEN_FILE = 'token.pickle'
 
 creds = None
 
-# Load saved token if available
-if os.path.exists(TOKEN_FILE):
+# Load saved token if available and valid
+if os.path.exists(TOKEN_FILE) and os.path.getsize(TOKEN_FILE) > 0:
     with open(TOKEN_FILE, 'rb') as token:
         creds = pickle.load(token)
 
-# If no valid credentials, run OAuth flow locally to generate token
+# If no valid credentials, run OAuth flow locally to generate token.pickle
 if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
     else:
+        # Run once locally, never inside Render
         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_console()  # Run once locally to generate token.pickle
+        creds = flow.run_console()
     with open(TOKEN_FILE, 'wb') as token:
         pickle.dump(creds, token)
 
