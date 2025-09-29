@@ -1,11 +1,12 @@
 # Base image
 FROM python:3.11-slim
 
-# Install system dependencies for PyMuPDF
+# Install system dependencies for PyMuPDF and SSL
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libmupdf-dev \
         gcc \
-        && rm -rf /var/lib/apt/lists/*
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -13,7 +14,7 @@ WORKDIR /app
 # Copy only requirements first
 COPY requirements.txt /app/
 
-# Install deps
+# Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
