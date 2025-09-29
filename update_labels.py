@@ -1,5 +1,5 @@
 # ==============================
-# update_labels.py (Shared Drive + OAuth, base64 token support)
+# update_labels.py (Shared Drive + OAuth, base64 token support + 24h cooldown)
 # ==============================
 import os
 import io
@@ -7,6 +7,7 @@ import datetime
 import tempfile
 import pickle
 import base64
+import time
 import fitz  # PyMuPDF
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
@@ -44,6 +45,28 @@ if not creds or not creds.valid:
         pickle.dump(creds, token)
 
 drive_service = build('drive', 'v3', credentials=creds)
+
+# ==============================
+# Cooldown Utilities
+# ==============================
+LAST_RUN_FILE = "/tmp/last_run.txt"
+COOLDOWN_SECONDS = 24 * 3600  # 24 hours
+
+def can_run_now():
+    """Check if enough time has passed since the last run."""
+    if not os.path.exists(LAST_RUN_FILE):
+        return True
+    try:
+        with open(LAST_RUN_FILE, "r") as f:
+            last_run = float(f.read().strip())
+        return (time.time() - last_run) > COOLDOWN_SECONDS
+    except Exception:
+        return True
+
+def mark_last_run():
+    """Update last run timestamp."""
+    with open(LAST_RUN_FILE, "w") as f:
+        f.write(str(time.time()))
 
 # ==============================
 # Google Drive Helpers
@@ -227,6 +250,10 @@ LABEL_CONFIGS = [
 ]
 
 def main():
+    if not can_run_now():
+        print("⏸ Skipping run (still in cooldown).")
+        return []
+
     all_summaries = []
     for config in LABEL_CONFIGS:
         result = process_labels(
@@ -235,6 +262,8 @@ def main():
             days_until_best_by=config["days_until_best_by"]
         )
         all_summaries.extend(result)
+
+    mark_last_run()
 
     # Final combined summary
     print("\n=== Combined Run Summary ===")
