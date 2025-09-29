@@ -1,11 +1,12 @@
 # ==============================
-# update_labels.py (Shared Drive + OAuth)
+# update_labels.py (Shared Drive + OAuth, base64 token support)
 # ==============================
 import os
 import io
 import datetime
 import tempfile
 import pickle
+import base64
 import fitz  # PyMuPDF
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
@@ -18,6 +19,12 @@ from google.auth.transport.requests import Request
 SCOPES = ['https://www.googleapis.com/auth/drive']
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_FILE = 'token.pickle'
+TOKEN_B64_FILE = 'token.b64'
+
+# --- Decode token.b64 into token.pickle if needed ---
+if os.path.exists(TOKEN_B64_FILE):
+    with open(TOKEN_B64_FILE, "rb") as f_in, open(TOKEN_FILE, "wb") as f_out:
+        f_out.write(base64.b64decode(f_in.read()))
 
 creds = None
 
@@ -31,7 +38,6 @@ if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
     else:
-        # Run once locally, opens browser for Google login
         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
         creds = flow.run_local_server(port=0)
     with open(TOKEN_FILE, 'wb') as token:
