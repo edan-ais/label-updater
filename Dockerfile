@@ -1,7 +1,3 @@
-# ==============================
-# Dockerfile for label-updater (Cloud Run Job with OAuth)
-# ==============================
-
 # Base image
 FROM python:3.11-slim
 
@@ -14,24 +10,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy only requirements first to leverage Docker cache
+# Copy only requirements first
 COPY requirements.txt /app/
 
-# Upgrade pip and install dependencies
+# Install deps
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code
 COPY . /app
 
-# Copy OAuth credentials (make sure credentials.json is in your repo)
+# Copy OAuth credentials (make sure credentials.json is in your repo or mounted as secret)
 COPY credentials.json /app/credentials.json
 
-# Create token.pickle for OAuth caching and make it writable
+# Create token.pickle for OAuth caching
 RUN touch /app/token.pickle && chmod 666 /app/token.pickle
 
-# Set environment variable for OAuth credentials
+# Env vars
 ENV GOOGLE_APPLICATION_CREDENTIALS="/app/credentials.json"
 
-# Command to run the job
-CMD ["python", "update_labels.py"]
+# Command to run Flask app
+CMD ["python", "web_app.py"]
