@@ -1,8 +1,9 @@
-# Ignore tokens and secrets
-token.pickle
-credentials.json
-
-# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.swp
 .env
+credentials.json
+token.pickle
+token.b64
