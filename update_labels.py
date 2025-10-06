@@ -1,18 +1,20 @@
+# ==============================
+# update_labels.py — Supabase Storage + PyMuPDF backend (1st/15th rounding)
+# ==============================
 import os
 import io
 import time
-import base64
 import tempfile
 import datetime
-import fitz 
+import fitz  # PyMuPDF
 from typing import List, Tuple
-
 from supabase import create_client, Client
 
+# -------- Config --------
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 STORAGE_BUCKET = os.environ.get("STORAGE_BUCKET", "labels")
-ARCHIVE_DIR = os.environ.get("ARCHIVE_DIR", "archive") 
+ARCHIVE_DIR = os.environ.get("ARCHIVE_DIR", "archive")
 COOLDOWN_SECONDS = int(os.environ.get("COOLDOWN_SECONDS", str(24 * 3600)))
 LAST_RUN_FILE = "/tmp/last_run.txt"
 
@@ -21,6 +23,7 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
+# -------- Cooldown helpers --------
 def can_run_now() -> bool:
     if not os.path.exists(LAST_RUN_FILE):
         return True
@@ -35,32 +38,28 @@ def mark_last_run():
     with open(LAST_RUN_FILE, "w") as f:
         f.write(str(time.time()))
 
+# -------- DB --------
 def fetch_products():
-    """
-    products: id uuid, name text, slug text, days_out int, folder_path text
-    """
     res = supabase.table("products").select("*").order("created_at", desc=False).execute()
     return res.data or []
 
+# -------- Expiration Rule: add days, then snap to 1st/15th --------
 def compute_best_by_date(days_ahead: int) -> str:
     target = datetime.date.today() + datetime.timedelta(days=days_ahead)
     y, m, d = target.year, target.month, target.day
     if d <= 1:
         rounded = datetime.date(y, m, 1)
-    elif d <= 5:
-        rounded = datetime.date(y, m, 5)
+    elif d <= 15:
+        rounded = datetime.date(y, m, 15)
     else:
-
         if m == 12:
             rounded = datetime.date(y + 1, 1, 1)
         else:
             rounded = datetime.date(y, m + 1, 1)
     return rounded.strftime("%m/%d/%Y")
 
+# -------- PDF Editing --------
 def replace_best_by_text(doc: fitz.Document, new_date: str) -> bool:
-    """
-    Replace first occurrence of "Best if Used By:" or "Best if used by:" with new date.
-    """
     phrases = ["Best if used by:", "Best if Used By:"]
     for page_num, page in enumerate(doc, start=1):
         blocks = page.get_text("dict").get("blocks", [])
@@ -71,40 +70,33 @@ def replace_best_by_text(doc: fitz.Document, new_date: str) -> bool:
                     if any(txt.startswith(p) for p in phrases):
                         new_text = f"Best if Used By: {new_date}"
                         bbox = fitz.Rect(s["bbox"])
-                
                         page.insert_textbox(
                             bbox,
                             new_text,
                             fontname="helv",
                             fontsize=s.get("size", 8),
                             color=(0, 0, 0),
-                            align=1 
+                            align=1
                         )
                         return True
     return False
 
+# -------- Storage Helpers --------
 def list_files(product_folder: str):
-    """
-    List non-archive files in product folder.
-    """
-
     resp = supabase.storage.from_(STORAGE_BUCKET).list(product_folder)
     items = resp if isinstance(resp, list) else resp.get("data", [])
-
     files = [e for e in items if isinstance(e, dict) and e.get("name") and not e["name"].endswith(".keep")]
-
     return files
 
 def ensure_placeholders(product_folder: str):
-
     try:
-      supabase.storage.from_(STORAGE_BUCKET).upload(product_folder + ".keep", io.BytesIO(b""), {"contentType": "text/plain", "upsert": True})
+        supabase.storage.from_(STORAGE_BUCKET).upload(product_folder + ".keep", io.BytesIO(b""), {"contentType": "text/plain", "upsert": True})
     except Exception:
-      pass
+        pass
     try:
-      supabase.storage.from_(STORAGE_BUCKET).upload(product_folder + f"{ARCHIVE_DIR}/.keep", io.BytesIO(b""), {"contentType": "text/plain", "upsert": True})
+        supabase.storage.from_(STORAGE_BUCKET).upload(product_folder + f"{ARCHIVE_DIR}/.keep", io.BytesIO(b""), {"contentType": "text/plain", "upsert": True})
     except Exception:
-      pass
+        pass
 
 def download_file_to_bytes(path: str) -> bytes:
     return supabase.storage.from_(STORAGE_BUCKET).download(path)
@@ -116,11 +108,8 @@ def move_to_archive_copy(product_folder: str, filename: str, original_data: byte
     dest = f"{product_folder}{ARCHIVE_DIR}/{filename}"
     upload_bytes(dest, original_data, "application/pdf", upsert=True)
 
+# -------- Processing --------
 def process_product(product) -> List[Tuple[str, str, str]]:
-    """
-    For a given product: read PDFs in its folder, copy original to archive/, update 'Best if Used By' date, re-upload.
-    Returns list of (name, status, date) for this product.
-    """
     folder = product.get("folder_path")
     if not folder:
         return []
@@ -137,15 +126,14 @@ def process_product(product) -> List[Tuple[str, str, str]]:
         path = f"{folder}{filename}"
         try:
             original_bytes = download_file_to_bytes(path)
-        except Exception as e:
-
+        except Exception:
             summary.append((filename, "download-error", None))
             continue
 
+        # Archive original
         try:
             move_to_archive_copy(folder, filename, original_bytes)
         except Exception:
-
             pass
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -154,14 +142,11 @@ def process_product(product) -> List[Tuple[str, str, str]]:
                 f_out.write(original_bytes)
 
             doc = fitz.open(tmp_path)
-            replaced = replace_best_by_text(doc, target_date)
-
-            if replaced:
+            if replace_best_by_text(doc, target_date):
                 doc.save(tmp_path, deflate=True)
                 doc.close()
                 with open(tmp_path, "rb") as f_in:
                     updated_bytes = f_in.read()
-
                 try:
                     upload_bytes(path, updated_bytes, "application/pdf", upsert=True)
                     summary.append((filename, "updated", target_date))
@@ -182,7 +167,6 @@ def main():
     products = fetch_products()
 
     for product in products:
-
         if not product.get("folder_path"):
             continue
         result = process_product(product)
